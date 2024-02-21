@@ -42,7 +42,7 @@ class QPolicy(Policy):
             \pi(a|s)
         """
         # pi(a|s) is 1 for the greedy action and 0 for the non-greedy actions
-        return np.argmax(self.V[state]) == action
+        return np.argmax(self.Q[state]) == action
 
     def action(self,state:int) -> int:
         """
@@ -51,7 +51,7 @@ class QPolicy(Policy):
         return:
             action
         """
-        return np.argmax(self.V[state])
+        return np.argmax(self.Q[state])
 
 def on_policy_n_step_td(
     env_spec:EnvSpec,
@@ -117,17 +117,18 @@ def off_policy_n_step_sarsa(
 
     for traj in trajs:
         T = len(traj)
-        for t in range(n-1, T+n-1):
+        for t in np.arange(n-1, T+n-1):
             tao = t - n + 1
 
+            # Calculate rho
             rho = 1
             for i in range(tao+1, min(tao+n+1, T)):
                 s, a, _, _ = traj[i]
                 rho *= pi.action_prob(s, a) / bpi.action_prob(s, a)
 
             G = 0
-            for i in range(tao+1, min(tao + n, T)):
-                G += env_spec.gamma ** (i-tao-1) * traj[i][2]
+            for i in range(tao+1, min(tao + n + 1, T)):
+                G += env_spec.gamma ** (i-tao-1) * traj[i-1][2]
             
             if tao + n < T:
                 s_t1, a_t1, _, _ = traj[tao + n]
