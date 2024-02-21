@@ -4,15 +4,35 @@ import numpy as np
 from env import EnvSpec
 from policy import Policy
 
+# This is the same as a greedy policy normally?
+# Original note/hint:
+# "QPolicy" here refers to a policy that takes 
+#    greedy actions w.r.t. Q values
 class QPolicy(Policy):
-    def __init__(self):
-        #####################
-        # TODO: Implement the methods in this class.
-        # You may add any arguments to the constructor as you see fit.
-        # "QPolicy" here refers to a policy that takes 
-        #    greedy actions w.r.t. Q values
-        #####################
-        raise NotImplementedError()
+    def __init__(self, Q=None, V=None, nA=None):
+        if Q is not None:
+            self._Q = Q
+            self._V = np.max(Q, axis=-1)
+        elif V is not None and nA is not None:
+            self._V = V
+            self._Q = np.column_stack([self._V] * nA)
+        else:
+            raise ValueError('Incorrect init for Greedy Policy')
+
+    @property
+    def Q(self):
+        return self._Q
+    
+    # Setting the action values inherently sets the Q value as well
+    @Q.setter
+    def Q(self, Q):
+        self._Q = Q
+        self._V = np.max(Q, axis=-1)
+
+    @property
+    def V(self):
+        return self._V
+
     
     def action_prob(self,state:int,action:int) -> float:
         """
@@ -21,7 +41,8 @@ class QPolicy(Policy):
         return:
             \pi(a|s)
         """
-        raise NotImplementedError()
+        # pi(a|s) is 1 for the greedy action and 0 for the non-greedy actions
+        return np.argmax(self.V[state]) == action
 
     def action(self,state:int) -> int:
         """
@@ -30,7 +51,7 @@ class QPolicy(Policy):
         return:
             action
         """
-        raise NotImplementedError()
+        return np.argmax(self.V[state])
 
 def on_policy_n_step_td(
     env_spec:EnvSpec,
@@ -51,10 +72,21 @@ def on_policy_n_step_td(
         V: $v_pi$ function; numpy array shape of [nS]
     """
 
-    #####################
-    # TODO: Implement On Policy n-Step TD algorithm
-    # sampling (Hint: Sutton Book p. 144)
-    #####################
+    V = np.copy(initV)
+
+    for traj in trajs:
+        T = len(traj)
+
+        for t in range(n-1, T+n-1):
+            tao = t-n+1
+
+            G = 0
+            for i in range(tao, min(tao+n, T)):
+                G += env_spec.gamma ** (i-tao-1) * traj[i][2]
+            
+            if tao + n < T:
+                G = G + env_spec.gamma ** n * V[traj[tao+n][0]]
+            V[traj[tao][0]] = V[traj[tao][0]] + alpha * (G - V[traj[tao][0]])
 
     return V
 
@@ -80,9 +112,29 @@ def off_policy_n_step_sarsa(
         policy: $pi_star$; instance of policy class
     """
 
-    #####################
-    # TODO: Implement Off Policy n-Step SARSA algorithm
-    # sampling (Hint: Sutton Book p. 149)
-    #####################
+    pi = QPolicy(Q=initQ)
+    Q = pi.Q
+
+    for traj in trajs:
+        T = len(traj)
+        for t in range(n-1, T+n-1):
+            tao = t - n + 1
+
+            rho = 1
+            for i in range(tao+1, min(tao+n+1, T)):
+                s, a, _, _ = traj[i]
+                rho *= pi.action_prob(s, a) / bpi.action_prob(s, a)
+
+            G = 0
+            for i in range(tao+1, min(tao + n, T)):
+                G += env_spec.gamma ** (i-tao-1) * traj[i][2]
+            
+            if tao + n < T:
+                s_t1, a_t1, _, _ = traj[tao + n]
+                G += env_spec.gamma ** n * Q[s_t1, a_t1]
+
+            s_t, a_t, _, _ = traj[tao]
+            Q[s_t, a_t] = Q[s_t, a_t] + alpha * rho * (G - Q[s_t, a_t])
+            pi.Q = Q
 
     return Q, pi
