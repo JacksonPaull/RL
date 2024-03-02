@@ -17,3 +17,10 @@ class ValueFunctionWithNN(ValueFunctionWithApproximation):
         # TODO: implement this method
         return None
 
+"""
+Implement ANN with pytorch
+
+adam optimzer, gamma1 = 0.9 gamma2 = 0.999
+2 hidden layers, 32 neurons each, relu activation
+no activation on output layer, 3 neurons (= cardinality of action space)
+"""

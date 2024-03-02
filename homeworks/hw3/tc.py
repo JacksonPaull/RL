@@ -22,3 +22,12 @@ class ValueFunctionWithTile(ValueFunctionWithApproximation):
     def update(self,alpha,G,s_tau):
         # TODO: implement this method
         return None
+
+
+"""
+Notes:
+
+Tile coding is a stacked one-hot vector
+number of tiles could be defined as num_tilings * (state_high - state_low) / tile_width <-- should be length of dimension vector
+gradient is trivial as simply equal to the weight vector since this is linear
+"""
