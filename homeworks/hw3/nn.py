@@ -2,25 +2,43 @@ import numpy as np
 import torch
 from algo import ValueFunctionWithApproximation
 
+class NN(torch.nn.Module):
+    def __init__(self, 
+                 in_feats = 2,
+                 num_hidden_neurons = 32,
+                 activation_fn = torch.nn.functional.relu):
+        self.input = torch.nn.Linear(in_feats, num_hidden_neurons)
+        self.hidden_1 = torch.nn.Linear(num_hidden_neurons, num_hidden_neurons)
+        self.hidden_2 = torch.nn.Linear(num_hidden_neurons, 1)
+        self.activation_fn = activation_fn
+
+    def forward(self, x):
+        x = self.input(x)
+        x = self.activation_fn(x)
+        x = self.hidden_1(x)
+        x = self.activation_fn(x)
+        x = self.hidden_2(x)
+        return x
+
 class ValueFunctionWithNN(ValueFunctionWithApproximation):
     def __init__(self, state_dims):
         """
         state_dims: the number of dimensions of state space
         """
-        # TODO: implement this method
-
+        self.nn = NN(in_feats = state_dims)
+        self.optimizer = torch.optim.Adam(self.nn.parameters(), betas=[0.9, 0.999])
+        
     def __call__(self,s):
-        # TODO: implement this method
-        return 0.
+        self.nn.eval()
+        return self.nn.forward(s)
 
     def update(self, alpha, G, s_tau):
-        # TODO: implement this method
+
+        self.nn.train()
+        loss = torch.multiply(alpha, torch.subtract(G, self(s_tau)))
+        self.nn.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
         return None
 
-"""
-Implement ANN with pytorch
-
-adam optimzer, gamma1 = 0.9 gamma2 = 0.999
-2 hidden layers, 32 neurons each, relu activation
-no activation on output layer, 3 neurons (= cardinality of action space)
-"""
