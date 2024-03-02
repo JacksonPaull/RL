@@ -50,6 +50,35 @@ def semi_gradient_n_step_td(
     output:
         None
     """
-    #TODO: implement this function
+    
+    for episode in range(num_episode):
+        s = env.reset()
+        t = 0
+        T = np.inf
+        S = np.array([s])
+        R = np.array([0])
+        while True:
+            if t < T:
+                # take action
+                action = pi.action(S[t])
+                s, reward, terminal, __ = env.step(action)
+                np.append(R, [reward])
+                np.append(S, [s])
+                if terminal:
+                    T = t+1
 
-"""Page 209 of textbook"""
+            tau = t - n + 1
+            if tau >= 0:
+                G = 0
+                for i in range(tau + 1, min(tau + n, T)+1):
+                    Ri = R[i]
+                    G += Ri * (gamma ** (i - tau - 1))
+                if tau + n < T:
+                    G += (gamma ** n) * V(S[tau + n])
+                
+                V.update(alpha, G, S[tau])
+
+            if tau == T - 1:
+                break   
+
+            t += 1
