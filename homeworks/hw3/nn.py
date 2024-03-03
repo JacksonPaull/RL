@@ -7,12 +7,14 @@ class NN(torch.nn.Module):
                  in_feats = 2,
                  num_hidden_neurons = 32,
                  activation_fn = torch.nn.functional.relu):
+        super().__init__()
         self.input = torch.nn.Linear(in_feats, num_hidden_neurons)
         self.hidden_1 = torch.nn.Linear(num_hidden_neurons, num_hidden_neurons)
         self.hidden_2 = torch.nn.Linear(num_hidden_neurons, 1)
         self.activation_fn = activation_fn
 
     def forward(self, x):
+        x = torch.from_numpy(x.astype('float32'))
         x = self.input(x)
         x = self.activation_fn(x)
         x = self.hidden_1(x)
@@ -30,12 +32,12 @@ class ValueFunctionWithNN(ValueFunctionWithApproximation):
         
     def __call__(self,s):
         self.nn.eval()
-        return self.nn.forward(s)
+        return self.nn.forward(s).detach().numpy()[0]
 
     def update(self, alpha, G, s_tau):
-
+        v = self.nn.forward(s_tau)
         self.nn.train()
-        loss = torch.multiply(alpha, torch.subtract(G, self(s_tau)))
+        loss = 1/2 * (torch.tensor([G]) - v) ** 2
         self.nn.zero_grad()
         loss.backward()
         self.optimizer.step()
