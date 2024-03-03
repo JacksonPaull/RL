@@ -17,18 +17,17 @@ class ValueFunctionWithTile(ValueFunctionWithApproximation):
         self.state_high = state_high
         self.num_tilings = num_tilings
         self.tile_width = tile_width
-        self.tiling_dims = np.ceil((state_high - state_low) / tile_width) + 1
-        total_feats = num_tilings * np.prod(self.tiling_dims)
-        self.W = np.array([0.0 for _ in range(total_feats)])
+        self.tiling_dims = (np.ceil((state_high - state_low) / tile_width) + 1).astype('int')
+        self.W = np.zeros(num_tilings * np.prod(self.tiling_dims))
 
     def construct_x(self, s):
-        # TODO test this
         X = np.zeros(self.W.shape)
         for t in range(self.num_tilings):
-            activated_tiles = np.floor((s - self.state_low + self.tile_width * t/self.num_tilings ) / self.tile_width)
+            offset = self.tile_width * t/self.num_tilings
+            activated_tiles = np.floor((s - self.state_low + offset ) / self.tile_width).astype('int')
             ids = np.ravel_multi_index(activated_tiles, self.tiling_dims) + t * np.prod(self.tiling_dims)
             X[ids] = 1
-        
+        assert(X.sum() == self.num_tilings), 'Number of activated tiles is different than the number of tilings'
         return X
 
     def __call__(self,s):
@@ -39,12 +38,3 @@ class ValueFunctionWithTile(ValueFunctionWithApproximation):
         grad = self.construct_x(s_tau)
         self.W = self.W + alpha * (G - self(s_tau)) * grad
         return None
-
-
-"""
-Notes:
-
-Tile coding is a stacked one-hot vector
-number of tiles could be defined as num_tilings * (state_high - state_low) / tile_width <-- should be length of dimension vector
-gradient is trivial as simply equal to the weight vector since this is linear
-"""

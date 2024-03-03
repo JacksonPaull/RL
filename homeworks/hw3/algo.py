@@ -1,5 +1,6 @@
 import numpy as np
 from policy import Policy
+from tqdm import tqdm #TODO Remove
 
 class ValueFunctionWithApproximation(object):
     def __call__(self,s) -> float:
@@ -51,7 +52,7 @@ def semi_gradient_n_step_td(
         None
     """
     
-    for episode in range(num_episode):
+    for _ in tqdm(range(num_episode)):
         s = env.reset()
         t = 0
         T = np.inf
@@ -62,8 +63,8 @@ def semi_gradient_n_step_td(
                 # take action
                 action = pi.action(S[t])
                 s, reward, terminal, __ = env.step(action)
-                np.append(R, [reward])
-                np.append(S, [s])
+                R = np.append(R, reward)
+                S = np.row_stack([S, s])
                 if terminal:
                     T = t+1
 
@@ -71,8 +72,7 @@ def semi_gradient_n_step_td(
             if tau >= 0:
                 G = 0
                 for i in range(tau + 1, min(tau + n, T)+1):
-                    Ri = R[i]
-                    G += Ri * (gamma ** (i - tau - 1))
+                    G += R[i] * (gamma ** (i - tau - 1))
                 if tau + n < T:
                     G += (gamma ** n) * V(S[tau + n])
                 
