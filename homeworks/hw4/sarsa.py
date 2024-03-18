@@ -14,22 +14,38 @@ class StateActionFeatureVectorWithTile():
         num_tilings: # tilings
         tile_width: tile width for each dimension
         """
-        # TODO: implement here
+        self.num_tilings = num_tilings
+        self.num_actions = num_actions
+        self.tile_width = tile_width
+
+        self.num_tiles = (np.ceil((state_high - state_low) / tile_width) + 1).astytpe('int')
 
     def feature_vector_len(self) -> int:
         """
         return dimension of feature_vector: d = num_actions * num_tilings * num_tiles
         """
-        # TODO: implement this method
-        raise NotImplementedError()
+        return self.num_actions * self.num_tiles * self.num_tilings
 
     def __call__(self, s, done, a) -> np.array:
         """
         implement function x: S+ x A -> [0,1]^d
         if done is True, then return 0^d
         """
-        # TODO: implement this method
-        raise NotImplementedError()
+        X = np.zeros(self.feature_vector_len())
+
+        # Early exit condition
+        if done:
+            return X
+        
+        for t in range(self.num_tilings):
+            offset = self.tile_width * t/self.num_tilings
+            activated_tiles = np.floor((s - self.state_low + offset ) / self.tile_width).astype('int')
+            ids = np.ravel_multi_index(activated_tiles, self.num_tiles) + (a + 1) * t * np.prod(self.num_tiles)
+            X[ids] = 1
+
+        assert(X.sum() == self.num_tilings), 'Number of activated tiles is different than the number of tilings'
+        
+        return X
 
 def SarsaLambda(
     env, # openai gym environment
