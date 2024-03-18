@@ -1,6 +1,7 @@
 import numpy as np
 import gym
 from sarsa import SarsaLambda, StateActionFeatureVectorWithTile
+import time
 
 def test_sarsa_lamda():
     env = gym.make("MountainCar-v0")
@@ -38,5 +39,13 @@ def test_sarsa_lamda():
 
     assert np.max(Gs) >= -110.0, 'fail to solve mountaincar'
 
+    return Gs
+
 if __name__ == "__main__":
-    test_sarsa_lamda()
+    print('Starting sarsa test...')
+    t = time.time()
+    Gs = test_sarsa_lamda()
+    print('Finished in ', time.time() - t, 's')
+    print()
+    print(Gs)
+    print(np.max(Gs))

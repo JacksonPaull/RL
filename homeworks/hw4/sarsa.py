@@ -1,4 +1,5 @@
 import numpy as np
+#from tqdm import tqdm
 
 class StateActionFeatureVectorWithTile():
     def __init__(self,
@@ -18,7 +19,10 @@ class StateActionFeatureVectorWithTile():
         self.num_actions = num_actions
         self.tile_width = tile_width
 
-        self.num_tiles = (np.ceil((state_high - state_low) / tile_width) + 1).astytpe('int')
+        self.tiling_dims = (np.ceil((state_high - state_low) / tile_width) + 1).astype('int')
+        self.num_tiles = np.prod(self.tiling_dims)
+        self.state_low = state_low
+        self.state_high = state_high
 
     def feature_vector_len(self) -> int:
         """
@@ -31,7 +35,7 @@ class StateActionFeatureVectorWithTile():
         implement function x: S+ x A -> [0,1]^d
         if done is True, then return 0^d
         """
-        X = np.zeros(self.feature_vector_len())
+        X = np.zeros(np.prod(self.feature_vector_len()))
 
         # Early exit condition
         if done:
@@ -40,10 +44,9 @@ class StateActionFeatureVectorWithTile():
         for t in range(self.num_tilings):
             offset = self.tile_width * t/self.num_tilings
             activated_tiles = np.floor((s - self.state_low + offset ) / self.tile_width).astype('int')
-            ids = np.ravel_multi_index(activated_tiles, self.num_tiles) + (a + 1) * t * np.prod(self.num_tiles)
+            ids = np.ravel_multi_index(activated_tiles, self.tiling_dims) + \
+                  t * self.num_tiles + a * self.num_tiles * self.num_tilings
             X[ids] = 1
-
-        assert(X.sum() == self.num_tilings), 'Number of activated tiles is different than the number of tilings'
         
         return X
 
@@ -68,7 +71,29 @@ def SarsaLambda(
         else:
             return np.argmax(Q)
 
-    w = np.zeros((X.feature_vector_len()))
+    w = np.zeros(X.feature_vector_len())
+    for _ in range(num_episode):
+        done = False
+        s = env.reset()
+        a = epsilon_greedy_policy(s, done, w, 0.1)
+        x = X(s, done, a)
+        z = np.zeros(x.shape)
+        Q_old = 0
 
-    #TODO: implement this function
-    raise NotImplementedError()
+        while not done:
+            s_prime, reward, done, __ = env.step(a)
+            a_prime = epsilon_greedy_policy(s_prime, done, w)
+            x_prime = X(s_prime, done, a_prime)
+
+            Q = w @ x
+            Q_prime = w @ x_prime
+
+            delta = reward + gamma * Q_prime - Q
+            z = gamma*lam*z + (1 - alpha * gamma * lam * z @ x) * x
+
+            w = w + alpha * (delta + Q - Q_old) * z - alpha * (Q - Q_old) * x
+            Q_old = Q_prime
+            x = x_prime
+            a = a_prime
+
+    return w
