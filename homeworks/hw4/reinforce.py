@@ -16,10 +16,12 @@ class PiApproximationWithNN(nn.Module):
         alpha: learning rate
         """
         super(PiApproximationWithNN, self).__init__()
+        hidden_size = 32
+
         self.layers = nn.ModuleList([
-            nn.Linear(state_dims, 32),
-            nn.Linear(32, 32),
-            nn.Linear(32, num_actions)
+            nn.Linear(state_dims, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, num_actions)
         ])
 
         self.optimizer = optim.Adam(self.parameters(), lr = alpha, betas=(0.9, 0.999))
@@ -62,7 +64,7 @@ class PiApproximationWithNN(nn.Module):
         action_probs = self.forward(states, return_prob=True)
 
         # Binary Cross entropy scaled by delta * gamma_t
-        loss =  ((delta * gamma_t).unsqueeze(dim=1) * torch.log(action_probs)).T @ actions_taken
+        loss =  (delta * gamma_t).unsqueeze(dim=1) * (torch.log(action_probs) @ actions_taken.T)
         loss = torch.sum(loss)
         
         self.zero_grad()
@@ -117,7 +119,7 @@ class VApproximationWithNN(nn.Module):
     def update(self, states, G):
         self.train()
         v = self.forward(states)
-        loss = F.mse_loss(v, G)
+        loss = torch.sum((v - G) ** 2)
         self.zero_grad()
         loss.backward()
         self.optimizer.step()
@@ -146,11 +148,13 @@ def REINFORCE(
         # Generate the entire episode
         s = env.reset()
         a = pi(s)
-        S = [s]
-        R = [0]
-        A = [a]
-        G_episode = [0]
+        S = []
+        R = []
+        A = []
+        G_episode = []
+        deltas = []
 
+        # Generate episode
         while True:
             s_prime, reward, done, _ = env.step(a)
             
@@ -161,24 +165,23 @@ def REINFORCE(
             # Don't append action and state' which take us to the terminal state
             S.append(s_prime)
             s = s_prime
-
             a = pi(s)
             A.append(a)
 
-        T = len(A)
-        for t in range(T-1): # A has length T - 1, all others have length T
-            G = 0
-            for k in range(t+1, T):
-                G += gamma ** (k - t - 1) * R[k]
+        T = len(A)+1
+        for t in range(T-1):
+            # We only use R[t:] from here because our R list starts from R[1], 
+                # hence R[t] = R_(t+1)
+                # Therefore R[t:] = [R_(t+1), ..., R_(T)]
+            G = np.array([gamma ** (k - t - 1) for k in range(t+1, T+1)]) @ np.array(R[t:])
             delta = G - V(S[t])
-            
-            if t == 0:
-                Gs.append(G) # Save the first G from each iteration
+            deltas.append(delta)
 
             G_episode.append(G)
 
+        # Cache G_0
+        Gs.append(G_episode[0])
         A = np.array(A)
-
 
         actions_taken = np.zeros((len(A), env.action_space.n))
         actions_taken[np.arange(A.size), A] = 1.0
@@ -186,9 +189,9 @@ def REINFORCE(
 
         G_episode = torch.tensor(G_episode, dtype=torch.float32)
         states = torch.tensor(np.array(S), dtype=torch.float32)
-        gamma_t = torch.tensor([gamma ** t for t in range(T)])
+        gamma_t = torch.tensor([gamma ** t for t in range(T-1)])
 
-        pi.update(states, actions_taken, gamma_t, delta)
+        pi.update(states, actions_taken, gamma_t, torch.tensor(deltas, dtype=torch.float32))
         V.update(states, G_episode)
 
     return Gs
