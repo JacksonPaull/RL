@@ -32,7 +32,7 @@ class PiApproximationWithNN(nn.Module):
         # update function below (which needs probabilities)
         # and because in test cases we will call pi(state) and 
         # expect an action as output.
-        x = torch.from_numpy(states.astype('float32'))
+        x = torch.tensor(states, dtype=torch.float32)
         x = self.layers[0](x)
         x = F.relu(x)
         x = self.layers[1](x)
@@ -43,11 +43,12 @@ class PiApproximationWithNN(nn.Module):
         if return_prob:
             return x
         
-        return np.random.choice(a = np.arange(len(x)), p=x.detach().numpy())
+        return torch.argmax(x, dim=-1)
     
-    def __call__(self, states):
+    def __call__(self, state):
+        assert(len(state.shape) == 1), 'Call only works for a single state'
         self.eval()
-        return self.forward(states)
+        return self.forward(state).item()
 
     def update(self, states, actions_taken, gamma_t, delta):
         """
@@ -58,9 +59,9 @@ class PiApproximationWithNN(nn.Module):
         """
         # TODO: probably a bug here
         self.train()
-        action_probs = self.forward(states, return_prob=True)
 
-        loss = gamma_t * delta * F.binary_cross_entropy(action_probs, actions_taken)
+        action_probs = self.forward(states, return_prob=True)
+        loss = (delta * gamma_t) @ F.binary_cross_entropy(action_probs, actions_taken)
         
         self.zero_grad()
         loss.backward()
@@ -100,7 +101,7 @@ class VApproximationWithNN(nn.Module):
         self.optimizer = optim.Adam(self.parameters(), lr = alpha, betas=(0.9, 0.999))
 
     def forward(self, states) -> float:
-        x = torch.from_numpy(states.astype('float32'))
+        x = torch.tensor(states, dtype=torch.float32)
         x = self.layers[0](x)
         x = F.relu(x)
         x = self.layers[1](x)
@@ -110,12 +111,12 @@ class VApproximationWithNN(nn.Module):
 
     def __call__(self, states):
         self.eval()
-        return self.forward(states).detach().numpy()[0]
+        return self.forward(states)
 
     def update(self, states, G):
         self.train()
         v = self.forward(states)
-        loss = 1/2 * (torch.tensor([G]) - v) ** 2
+        loss = 1/2 * (G - v) ** 2
         self.zero_grad()
         loss.backward()
         self.optimizer.step()
@@ -150,17 +151,17 @@ def REINFORCE(
 
         while True:
             s_prime, reward, done, _ = env.step(a)
-            A.append(a)
-            S.append(s_prime)
             R.append(reward)
             if done:
                 break
             
+            # Don't append action and state' which take us to the terminal state
+            A.append(a)
+            S.append(s_prime)
             s = s_prime
             a = pi(s)
 
         T = len(R)
-        print(T)
         for t in range(T-1): # A has length T - 1, all others have length T
             G = 0
             for k in range(t+1, T):
@@ -170,10 +171,18 @@ def REINFORCE(
             if t == 0:
                 Gs.append(G) # Save the first G from each iteration
 
-            actions_taken = np.zeros(env.action_space.n)
-            actions_taken[A[t]] = 1.0
-            actions_taken = torch.from_numpy(actions_taken.astype('float32'))
-            pi.update(S[t], actions_taken, gamma ** t, delta)
-            V.update(S[t], G)
+        A = np.array(A)
+
+
+        actions_taken = np.zeros((len(A), env.action_space.n))
+        actions_taken[np.arange(A.size), A] = 1.0
+        actions_taken = torch.from_numpy(actions_taken.astype('float32'))
+
+        Gs = torch.tensor(Gs)
+        states = torch.tensor(S)
+        gamma_t = torch.tensor([gamma ** t for t in range(T-1)])
+
+        pi.update(states, actions_taken, gamma_t, delta)
+        V.update(states, Gs)
 
     return Gs
