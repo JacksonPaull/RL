@@ -16,10 +16,11 @@ class PiApproximationWithNN(nn.Module):
         alpha: learning rate
         """
         super(PiApproximationWithNN, self).__init__()
+        
         hidden_size = 32
-
         self.layers = nn.ModuleList([
             nn.Linear(state_dims, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, num_actions)
         ])
@@ -34,17 +35,19 @@ class PiApproximationWithNN(nn.Module):
         # update function below (which needs probabilities)
         # and because in test cases we will call pi(state) and 
         # expect an action as output.
-        x = self.layers[0](states)
-        x = F.relu(x)
-        x = self.layers[1](x)
-        x = F.relu(x)
-        x = self.layers[2](x)
-        x = F.softmax(x, dim=-1)
+        x = states
+        for i, l in enumerate(self.layers):
+            x = l(x)
+            if i == len(self.layers) - 1:
+                x = F.softmax(x, dim=-1)
+            else:
+                x = F.relu(x)
 
         if return_prob:
             return x
         
-        return torch.argmax(x, dim=-1)
+        x = x.detach().numpy()
+        return np.random.choice(np.arange(len(x)), p=x)
     
     def __call__(self, state):
         assert(len(state.shape) == 1), 'Call only works for a single state'
@@ -97,20 +100,22 @@ class VApproximationWithNN(nn.Module):
         """
         super(VApproximationWithNN, self).__init__()
         
+        hidden_size = 32
         self.layers = nn.ModuleList([
-            nn.Linear(state_dims, 32),
-            nn.Linear(32, 32),
-            nn.Linear(32, 1)
+            nn.Linear(state_dims, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, 1)
         ])
         self.optimizer = optim.Adam(self.parameters(), lr = alpha, betas=(0.9, 0.999))
 
     def forward(self, states) -> float:
-        x = self.layers[0](states)
-        x = F.relu(x)
-        x = self.layers[1](x)
-        x = F.relu(x)
-        x = self.layers[2](x).flatten()
-        return x
+        x = states
+        for i, l in enumerate(self.layers):
+            x = l(x)
+            if i < len(self.layers) - 1:
+                x = F.relu(x)
+        return x.flatten()
 
     def __call__(self, states):
         self.eval()
@@ -148,11 +153,11 @@ def REINFORCE(
         # Generate the entire episode
         s = env.reset()
         a = pi(s)
-        S = []
-        R = []
-        A = []
-        G_episode = []
-        deltas = []
+        S = [s]
+        R = [0]
+        A = [a]
+        G_episode = [0]
+        deltas = [-V(S[0])]
 
         # Generate episode
         while True:
@@ -168,19 +173,16 @@ def REINFORCE(
             a = pi(s)
             A.append(a)
 
-        T = len(A)+1
+        T = len(A)
         for t in range(T-1):
-            # We only use R[t:] from here because our R list starts from R[1], 
-                # hence R[t] = R_(t+1)
-                # Therefore R[t:] = [R_(t+1), ..., R_(T)]
-            G = np.array([gamma ** (k - t - 1) for k in range(t+1, T+1)]) @ np.array(R[t:])
+            G = np.array([gamma ** (k - t - 1) for k in range(t+1, T+1)]) @ np.array(R[t+1:])
             delta = G - V(S[t])
             deltas.append(delta)
 
             G_episode.append(G)
 
         # Cache G_0
-        Gs.append(G_episode[0])
+        Gs.append(G_episode[1])
         A = np.array(A)
 
         actions_taken = np.zeros((len(A), env.action_space.n))
@@ -189,7 +191,7 @@ def REINFORCE(
 
         G_episode = torch.tensor(G_episode, dtype=torch.float32)
         states = torch.tensor(np.array(S), dtype=torch.float32)
-        gamma_t = torch.tensor([gamma ** t for t in range(T-1)])
+        gamma_t = torch.tensor([gamma ** t for t in range(T)])
 
         pi.update(states, actions_taken, gamma_t, torch.tensor(deltas, dtype=torch.float32))
         V.update(states, G_episode)

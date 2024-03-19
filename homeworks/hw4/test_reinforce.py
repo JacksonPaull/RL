@@ -28,11 +28,11 @@ if __name__ == "__main__":
     num_iter = 5
 
     # Test REINFORCE with baseline
-    # with_baseline = []
-    # for _ in range(num_iter):
-    #     training_progress = test_reinforce(with_baseline=True)
-    #     with_baseline.append(training_progress)
-    # with_baseline = np.mean(with_baseline,axis=0)
+    with_baseline = []
+    for _ in range(num_iter):
+        training_progress = test_reinforce(with_baseline=True)
+        with_baseline.append(training_progress)
+    with_baseline = np.mean(with_baseline,axis=0)
 
     # Test REINFORCE without baseline
     without_baseline = []
@@ -44,7 +44,7 @@ if __name__ == "__main__":
     # Plot the experiment result
     fig,ax = plt.subplots()
     ax.plot(np.arange(len(without_baseline)),without_baseline, label='without baseline')
-    # ax.plot(np.arange(len(with_baseline)),with_baseline, label='with baseline')
+    ax.plot(np.arange(len(with_baseline)),with_baseline, label='with baseline')
 
     ax.set_xlabel('iteration')
     ax.set_ylabel('G_0')
