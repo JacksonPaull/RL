@@ -38,7 +38,7 @@ class PiApproximationWithNN(nn.Module):
         x = self.layers[1](x)
         x = F.relu(x)
         x = self.layers[2](x)
-        x = F.softmax(x, dim=0)
+        x = F.softmax(x, dim=-1)
 
         if return_prob:
             return x
@@ -59,12 +59,9 @@ class PiApproximationWithNN(nn.Module):
         # TODO: probably a bug here
         self.train()
         action_probs = self.forward(states, return_prob=True)
-        a = np.zeros(action_probs.shape)
-        a[actions_taken] = 1.0
 
-        loss = gamma_t * delta * F.cross_entropy(action_probs, 
-                                                 torch.from_numpy(a))
-        F.binary_cross_entropy()
+        loss = gamma_t * delta * F.binary_cross_entropy(action_probs, actions_taken)
+        
         self.zero_grad()
         loss.backward()
         self.optimizer.step()
@@ -143,7 +140,7 @@ def REINFORCE(
         a list that includes the G_0 for every episodes.
     """
     Gs = []
-    for episode in tqdm(range(num_episodes)):
+    for episode in range(num_episodes):
         # Generate the entire episode
         s = env.reset()
         a = pi(s)
@@ -163,6 +160,7 @@ def REINFORCE(
             a = pi(s)
 
         T = len(R)
+        print(T)
         for t in range(T-1): # A has length T - 1, all others have length T
             G = 0
             for k in range(t+1, T):
@@ -172,7 +170,10 @@ def REINFORCE(
             if t == 0:
                 Gs.append(G) # Save the first G from each iteration
 
-            pi.update(S[t], A[t], gamma ** t, delta)
+            actions_taken = np.zeros(env.action_space.n)
+            actions_taken[A[t]] = 1.0
+            actions_taken = torch.from_numpy(actions_taken.astype('float32'))
+            pi.update(S[t], actions_taken, gamma ** t, delta)
             V.update(S[t], G)
 
     return Gs
