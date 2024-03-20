@@ -21,7 +21,7 @@ class PiApproximationWithNN(nn.Module):
         self.layers = nn.ModuleList([
             nn.Linear(state_dims, hidden_size),
             nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
+            # nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, num_actions)
         ])
 
@@ -36,17 +36,20 @@ class PiApproximationWithNN(nn.Module):
         # and because in test cases we will call pi(state) and 
         # expect an action as output.
         x = states
-        for i, l in enumerate(self.layers):
+        for l in self.layers[:-1]:
             x = l(x)
-            if i == len(self.layers) - 1:
-                x = F.softmax(x, dim=-1)
-            else:
-                x = F.relu(x)
+            x = F.relu(x)
+
+        x = self.layers[-1](x)
+        x = F.softmax(x, dim=-1)
 
         if return_prob:
             return x
         
         x = x.detach().numpy()
+        if np.isnan(x).sum() > 0:
+            print(states)
+            print(x)
         return np.random.choice(np.arange(len(x)), p=x)
     
     def __call__(self, state):
@@ -66,9 +69,15 @@ class PiApproximationWithNN(nn.Module):
 
         action_probs = self.forward(states, return_prob=True)
 
-        # Binary Cross entropy scaled by delta * gamma_t
-        loss =  (delta * gamma_t).unsqueeze(dim=1) * (torch.log(action_probs) @ actions_taken.T)
-        loss = torch.sum(loss)
+        # print(torch.log(action_probs))
+        # print(actions_taken)
+        # print(delta * gamma_t)
+        # print((torch.log(action_probs) @ actions_taken.T).diagonal())
+        # print((delta * gamma_t) * (torch.log(action_probs) @ actions_taken.T).diagonal())
+
+        # exit()
+        loss =  (delta * gamma_t) * (torch.log(action_probs) @ actions_taken.T).diagonal()
+        loss = -1 * torch.sum(loss)
         
         self.zero_grad()
         loss.backward()
@@ -104,17 +113,17 @@ class VApproximationWithNN(nn.Module):
         self.layers = nn.ModuleList([
             nn.Linear(state_dims, hidden_size),
             nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
+            # nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, 1)
         ])
         self.optimizer = optim.Adam(self.parameters(), lr = alpha, betas=(0.9, 0.999))
 
     def forward(self, states) -> float:
         x = states
-        for i, l in enumerate(self.layers):
+        for l in self.layers[:-1]:
             x = l(x)
-            if i < len(self.layers) - 1:
-                x = F.relu(x)
+            x = F.relu(x)
+        x = self.layers[-1](x)
         return x.flatten()
 
     def __call__(self, states):
@@ -149,15 +158,15 @@ def REINFORCE(
         a list that includes the G_0 for every episodes.
     """
     Gs = []
-    for episode in tqdm(range(num_episodes)):
+    for episode in range(num_episodes):
         # Generate the entire episode
         s = env.reset()
         a = pi(s)
         S = [s]
         R = [0]
         A = [a]
-        G_episode = [0]
-        deltas = [-V(S[0])]
+        G_episode = []
+        deltas = []
 
         # Generate episode
         while True:
@@ -174,15 +183,15 @@ def REINFORCE(
             A.append(a)
 
         T = len(A)
-        for t in range(T-1):
+        for t in range(T):
             G = np.array([gamma ** (k - t - 1) for k in range(t+1, T+1)]) @ np.array(R[t+1:])
             delta = G - V(S[t])
-            deltas.append(delta)
 
+            deltas.append(delta)
             G_episode.append(G)
 
         # Cache G_0
-        Gs.append(G_episode[1])
+        Gs.append(G_episode[0])
         A = np.array(A)
 
         actions_taken = np.zeros((len(A), env.action_space.n))
